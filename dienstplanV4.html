@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terminplaner</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 20px;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+
+        .container {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            max-width: 900px;
+            margin: auto;
+        }
+
+        h1, h2 {
+            color: #333;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+
+        .content-wrapper {
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+
+        .calendar-input-section, .entries-section {
+            flex: 1;
+            min-width: 300px;
+        }
+
+        #calendar-container {
+            margin-bottom: 20px;
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .input-group select,
+        .input-group input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1em;
+            margin-top: 5px;
+            margin-right: 10px;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        #entries-array-display {
+            border: 1px solid #ddd;
+            padding: 10px;
+            min-height: 100px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-size: 0.9em;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        #entries-array-display ul {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        #entries-array-display li {
+            padding: 8px 5px;
+            border-bottom: 1px dashed #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #entries-array-display li:last-child {
+            border-bottom: none;
+        }
+
+        .error {
+            color: red;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+
+        .delete-btn {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.8em;
+        }
+
+        .delete-btn:hover {
+            background-color: #c82333;
+        }
+        .export-buttons button {
+            margin-bottom: 5px;
+        }
+
+        @media (max-width: 768px) {
+            .content-wrapper {
+                flex-direction: column;
+            }
+            .calendar-input-section, .entries-section {
+                min-width: unset;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Terminplaner</h1>
+
+        <div class="content-wrapper">
+            <div class="calendar-input-section">
+                <h2>1. Datum auswählen & Wert festlegen</h2>
+                <div id="calendar-container"></div>
+
+                <div class="input-group">
+                    <label for="value-type">Wert-Typ:</label>
+                    <select id="value-type">
+                        <option value="predefined">Vordefiniert</option>
+                        <option value="freetext">Freitext</option>
+                    </select>
+                </div>
+
+                <div id="predefined-values-container" class="input-group">
+                    <label for="predefined-value">Vordefinierter Wert:</label>
+                    <select id="predefined-value">
+                        <option>RD1</option>
+                        <option>RD2</option>
+                        <option>RD3</option>
+                        <option>RD4</option>
+                        <option>RD5</option>
+                        <option>RDN1</option>
+                        <option>RDN2</option>
+                    </select>
+                </div>
+
+                <div id="freetext-container" class="input-group" style="display:none;">
+                    <label for="freetext-value">Freitext:</label>
+                    <input type="text" id="freetext-value" placeholder="z.B. S84, Meeting...">
+                </div>
+
+                <button id="add-entry-button">Zum Array hinzufügen</button>
+                <p id="error-message" class="error"></p>
+            </div>
+
+            <div class="entries-section">
+                <h2>2. Ausgewählte Einträge</h2>
+                <div id="entries-array-display">
+                    <p>Noch keine Einträge.</p>
+                </div>
+                <div class="export-buttons">
+                    <button id="download-csv-button" disabled>CSV Herunterladen</button>
+                    <button id="download-ics-button" disabled>iCalendar (.ics) für Import</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/de.js"></script>
+    <script>
+        console.log('Script gestartet.'); // Debug: Skriptstart
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('DOMContentLoaded gefeuert.'); // Debug: DOM geladen
+
+            const calendarContainer = document.getElementById('calendar-container');
+            console.log('calendarContainer Element:', calendarContainer); // Debug: Element gefunden?
+
+            // Wenn calendarContainer null ist, wurde das Element im HTML nicht gefunden.
+            if (!calendarContainer) {
+                console.error('Element #calendar-container wurde nicht gefunden!');
+                // Hier könntest du eine Fehlermeldung auf der Seite anzeigen, falls gewünscht
+                // alert('Fehler: Kalender-Container-Element nicht gefunden.');
+                return; // Skriptausführung stoppen, da Kalender nicht initialisiert werden kann
+            }
+
+
+            const valueTypeSelect = document.getElementById('value-type');
+            const predefinedValuesContainer = document.getElementById('predefined-values-container');
+            const freetextContainer = document.getElementById('freetext-container');
+            const predefinedValueSelect = document.getElementById('predefined-value');
+            const freetextValueInput = document.getElementById('freetext-value');
+            const addEntryButton = document.getElementById('add-entry-button');
+            const entriesArrayDisplay = document.getElementById('entries-array-display');
+            const downloadCsvButton = document.getElementById('download-csv-button');
+            const downloadIcsButton = document.getElementById('download-ics-button');
+            const errorMessage = document.getElementById('error-message');
+
+            let selectedDate = null;
+            let entries = [];
+
+            // Initialisierung von Flatpickr
+            try { // Debug: Fehler beim Initialisieren abfangen
+                const fp = flatpickr(calendarContainer, {
+                    inline: true,
+                    dateFormat: "Y-m-d",
+                    locale: "de",
+                    onChange: function(selectedDates, dateStr, instance) {
+                        if (selectedDates.length > 0) {
+                            selectedDate = selectedDates[0];
+                            errorMessage.textContent = '';
+                        } else {
+                            selectedDate = null;
+                        }
+                    }
+                });
+                 console.log('Flatpickr initialisiert.', fp); // Debug: Initialisierung erfolgreich
+            } catch (error) {
+                console.error('Fehler bei der Flatpickr Initialisierung:', error); // Debug: Fehler anzeigen
+            }
+
+
+            valueTypeSelect.addEventListener('change', () => {
+                if (valueTypeSelect.value === 'freetext') {
+                    predefinedValuesContainer.style.display = 'none';
+                    freetextContainer.style.display = 'block';
+                    freetextValueInput.focus();
+                } else {
+                    predefinedValuesContainer.style.display = 'block';
+                    freetextContainer.style.display = 'none';
+                }
+            });
+
+            addEntryButton.addEventListener('click', () => {
+                if (!selectedDate) {
+                    errorMessage.textContent = 'Bitte zuerst ein Datum auswählen.';
+                    return;
+                }
+
+                let subject;
+                if (valueTypeSelect.value === 'predefined') {
+                    subject = predefinedValueSelect.value;
+                } else {
+                    subject = freetextValueInput.value.trim();
+                    if (!subject) {
+                        errorMessage.textContent = 'Bitte einen Freitext eingeben.';
+                        return;
+                    }
+                }
+
+                const isDuplicate = entries.some(entry =>
+                    entry.date.getTime() === selectedDate.getTime() && entry.subject === subject
+                );
+
+                if (isDuplicate) {
+                     errorMessage.textContent = `Der Eintrag "${subject}" existiert bereits für den ${formatDateForDisplay(selectedDate)}.`;
+                     return;
+                }
+
+
+                entries.push({ date: new Date(selectedDate.getTime()), subject: subject });
+                entries.sort((a, b) => a.date - b.date);
+                renderEntries();
+                errorMessage.textContent = '';
+                freetextValueInput.value = '';
+            });
+
+            function renderEntries() {
+                const entriesCount = entries.length; // Anzahl der Einträge ermitteln
+
+                if (entriesCount === 0) {
+                    entriesArrayDisplay.innerHTML = '<p>Noch keine Einträge.</p>';
+                    downloadCsvButton.disabled = true;
+                    downloadIcsButton.disabled = true;
+                    return;
+                }
+
+                const ul = document.createElement('ul');
+                entries.forEach((entry, index) => {
+                    const li = document.createElement('li');
+                    const entryText = document.createElement('span');
+                    entryText.textContent = `${formatDateForDisplay(entry.date)} - ${entry.subject}`;
+
+                    const deleteButton = document.createElement('button');
+                    deleteButton.textContent = 'Löschen';
+                    deleteButton.classList.add('delete-btn');
+                    deleteButton.addEventListener('click', () => deleteEntry(index));
+
+                    li.appendChild(entryText);
+                    li.appendChild(deleteButton);
+                    ul.appendChild(li);
+                });
+
+                // Element zur Anzeige der Anzahl erstellen
+                const countDisplay = document.createElement('p');
+                countDisplay.textContent = `Anzahl der Einträge: ${entriesCount}`;
+                countDisplay.style.fontWeight = 'bold'; // Optional: Für bessere Sichtbarkeit
+                countDisplay.style.marginBottom = '10px'; // Optional: Abstand zur Liste
+
+
+                entriesArrayDisplay.innerHTML = ''; // Vorhandenen Inhalt leeren
+                entriesArrayDisplay.appendChild(countDisplay); // Anzahl hinzufügen
+                entriesArrayDisplay.appendChild(ul); // Liste hinzufügen
+
+
+                downloadCsvButton.disabled = false;
+                downloadIcsButton.disabled = false;
+            }
+
+            function deleteEntry(index) {
+                entries.splice(index, 1);
+                renderEntries();
+            }
+
+            function formatDateForDisplay(dateObj) {
+                const day = String(dateObj.getDate()).padStart(2, '0');
+                const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+                const year = dateObj.getFullYear();
+                return `${day}.${month}.${year}`;
+            }
+
+            function formatDateForCSV(dateObj) {
+                const day = String(dateObj.getDate()).padStart(2, '0');
+                const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+                const year = dateObj.getFullYear();
+                return `${day}/${month}/${year}`;
+            }
+
+            // --- iCalendar Funktionen ---
+            function formatICSDate(dateObj, isEndDate = false) {
+                let tempDate = new Date(dateObj.valueOf());
+                if (isEndDate) {
+                    tempDate.setDate(tempDate.getDate() + 1);
+                }
+                const year = tempDate.getFullYear();
+                const month = String(tempDate.getMonth() + 1).padStart(2, '0');
+                const day = String(tempDate.getDate()).padStart(2, '0');
+                return `${year}${month}${day}`;
+            }
+
+            function formatICSTimestamp(dateObj) {
+                const year = dateObj.getUTCFullYear();
+                // KORRIGIERT: getUTCMoth zu getUTCMonth
+                const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+                const day = String(dateObj.getUTCDate()).padStart(2, '0');
+                const hours = String(dateObj.getUTCHours()).padStart(2, '0');
+                const minutes = String(dateObj.getUTCMinutes()).padStart(2, '0');
+                const seconds = String(dateObj.getUTCSeconds()).padStart(2, '0');
+                return `${year}${month}${day}T${hours}${minutes}${seconds}Z`;
+            }
+
+            function escapeICSString(str) {
+                return str.replace(/\\/g, '\\\\')
+                          .replace(/;/g, '\\;')
+                          .replace(/,/g, '\\,')
+                          .replace(/\n/g, '\\n');
+            }
+
+            downloadIcsButton.addEventListener('click', () => {
+                if (entries.length === 0) return;
+
+                const calHeader = [
+                    'BEGIN:VCALENDAR',
+                    'VERSION:2.0',
+                    'PRODID:-//DeinName//Terminplaner//DE', // Passe "DeinName" ggf. an
+                    'CALSCALE:GREGORIAN'
+                ];
+
+                const calEvents = entries.map(entry => {
+                    // Eine einfachere UID Generierung, die weniger anfällig für Konflikte ist
+                    const uid = `${entry.date.getTime()}-${entry.subject.replace(/\s+/g, '')}-${Math.random().toString(36).substr(2, 9)}@terminplaner.local`;
+                    const dtstamp = formatICSTimestamp(new Date());
+                    const dtstart = formatICSDate(entry.date);
+                    const dtend = formatICSDate(entry.date, true);
+
+                    return [
+                        'BEGIN:VEVENT',
+                        `UID:${uid}`,
+                        `DTSTAMP:${dtstamp}`,
+                        `DTSTART;VALUE=DATE:${dtstart}`,
+                        `DTEND;VALUE=DATE:${dtend}`,
+                        `SUMMARY:${escapeICSString(entry.subject)}`,
+                        'END:VEVENT'
+                    ].join('\r\n');
+                });
+
+                const calFooter = 'END:VCALENDAR';
+                const icsContent = [calHeader.join('\r\n'), ...calEvents, calFooter].join('\r\n');
+
+                const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8;' });
+                const link = document.createElement("a");
+                if (link.download !== undefined) {
+                    const url = URL.createObjectURL(blob);
+                    link.setAttribute("href", url);
+                    link.setAttribute("download", "kalendereintraege.ics");
+                    link.style.visibility = 'hidden';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                } else {
+                    // Fallback für Browser, die den Download-Attribute nicht unterstützen (sehr alt)
+                    alert("Ihr Browser unterstützt den automatischen Download nicht. Bitte speichern Sie den folgenden Inhalt manuell als .ics Datei:\n\n" + icsContent);
+                }
+            });
+
+            downloadCsvButton.addEventListener('click', () => {
+                if (entries.length === 0) return;
+                let csvContent = "Subject,Start Date,All Day Event\n";
+                entries.forEach(entry => {
+                    const subject = entry.subject.includes(',') ? `"${entry.subject.replace(/"/g, '""')}"` : entry.subject;
+                    const line = `${subject},${formatDateForCSV(entry.date)},true\n`;
+                    csvContent += line;
+                });
+
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement("a");
+                if (link.download !== undefined) {
+                    const url = URL.createObjectURL(blob);
+                    link.setAttribute("href", url);
+                    link.setAttribute("download", "kalendereintraege.csv");
+                    link.style.visibility = 'hidden';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                }
+            });
+
+            renderEntries();
+        });
+        console.log('Skriptende.'); // Debug: Skriptende
+    </script>
+</body>
+</html>
