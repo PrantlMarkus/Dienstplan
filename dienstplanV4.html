@@ -87,7 +87,12 @@
     <dialog id="eventModal" class="p-8 w-full max-w-md rounded-3xl shadow-2xl">
         <div class="flex justify-between items-center mb-6">
             <h3 class="text-xl font-bold text-gray-800">Schicht für <span id="modalDate"></span></h3>
-            <button id="closeModal" class="text-gray-400 hover:text-gray-600">&times;</button>
+            <!-- Aktualisierter Close Button mit SVG-Icon -->
+            <button id="closeModal" class="p-2 rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors duration-200">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
         </div>
         
         <!-- Ein Container für alle Modal-Inhalte, um einheitliche Abstände zu gewährleisten -->
@@ -196,7 +201,15 @@
                 for (let i = 1; i <= daysInMonth; i++) {
                     const dayEl = document.createElement('div');
                     const dayFullDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                    const dayOfWeek = new Date(year, month, i).getDay(); // 0 = Sonntag, 6 = Samstag
+                    
                     dayEl.className = `calendar-day p-4 rounded-lg text-sm transition-colors duration-100 flex flex-col items-center justify-center relative`;
+
+                    // Überprüfen, ob es ein Wochenende ist und die entsprechende Klasse hinzufügen
+                    if (dayOfWeek === 0 || dayOfWeek === 6) {
+                        dayEl.classList.add('bg-yellow-100'); // Leichter gelber Hintergrund
+                    }
+
                     dayEl.textContent = i;
                     
                     const existingEvent = events.find(e => e.date === dayFullDate);
@@ -237,10 +250,11 @@
                     const li = document.createElement('li');
                     li.className = 'bg-gray-100 p-4 rounded-lg flex items-center justify-between shadow-sm';
                     
-                    const eventText = document.createElement('span');
+                    const textContainer = document.createElement('div');
+                    textContainer.className = 'flex items-center';
                     const formattedDate = new Date(event.date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-                    eventText.textContent = `${formattedDate}: ${event.shift}`;
-                    eventText.className = 'text-gray-700 font-medium';
+                    // Kombiniert den gesamten Text in einem span, um das Leerzeichen zu garantieren
+                    textContainer.innerHTML = `<span class="text-gray-700 font-medium">${formattedDate}: </span><span class="text-emerald-700 font-bold">${event.shift}</span>`;
 
                     const deleteBtn = document.createElement('button');
                     deleteBtn.innerHTML = '&times;';
@@ -251,7 +265,7 @@
                         renderCalendar();
                     });
 
-                    li.appendChild(eventText);
+                    li.appendChild(textContainer);
                     li.appendChild(deleteBtn);
                     eventListEl.appendChild(li);
                 });
