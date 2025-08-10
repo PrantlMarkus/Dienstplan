@@ -65,7 +65,8 @@
 
         <!-- Termin-Liste und Download-Bereich -->
         <div class="bg-gray-50 p-6 rounded-2xl shadow-inner flex flex-col h-full">
-            <h3 class="text-xl font-bold text-gray-800 mb-4">Deine Termine (<span id="totalEvents">0</span>)</h3>
+            <!-- Text von "Deine Termine" zu "Arbeitstage" geändert -->
+            <h3 class="text-xl font-bold text-gray-800 mb-4">Arbeitstage (<span id="totalEvents">0</span>)</h3>
             <ul id="eventList" class="space-y-3 flex-grow overflow-y-auto pr-2">
                 <!-- Termin-Einträge werden hier von JavaScript eingefügt -->
             </ul>
@@ -89,21 +90,33 @@
             <button id="closeModal" class="text-gray-400 hover:text-gray-600">&times;</button>
         </div>
         
-        <p class="text-gray-600 mb-4">Wähle eine Schicht:</p>
-        <div class="grid grid-cols-3 gap-3 mb-6" id="shiftButtons">
-            <button data-shift="RD1" class="shift-btn bg-gray-200 hover:bg-emerald-200 text-gray-700 font-medium py-3 rounded-lg transition-colors">RD1</button>
-            <button data-shift="RD2" class="shift-btn bg-gray-200 hover:bg-emerald-200 text-gray-700 font-medium py-3 rounded-lg transition-colors">RD2</button>
-            <button data-shift="RD3" class="shift-btn bg-gray-200 hover:bg-emerald-200 text-gray-700 font-medium py-3 rounded-lg transition-colors">RD3</button>
-            <button data-shift="RD4" class="shift-btn bg-gray-200 hover:bg-emerald-200 text-gray-700 font-medium py-3 rounded-lg transition-colors">RD4</button>
-            <button data-shift="RD5" class="shift-btn bg-gray-200 hover:bg-emerald-200 text-gray-700 font-medium py-3 rounded-lg transition-colors">RD5</button>
-            <button data-shift="RDN1" class="shift-btn bg-gray-200 hover:bg-emerald-200 text-gray-700 font-medium py-3 rounded-lg transition-colors">RDN1</button>
-            <button data-shift="RDN2" class="shift-btn bg-gray-200 hover:bg-emerald-200 text-gray-700 font-medium py-3 rounded-lg transition-colors">RDN2</button>
-        </div>
+        <!-- Ein Container für alle Modal-Inhalte, um einheitliche Abstände zu gewährleisten -->
+        <div class="flex flex-col gap-4">
+            <p class="text-gray-600">Wähle eine Schicht:</p>
+            <div class="grid grid-cols-3 gap-3" id="dayShiftButtons">
+                <button data-shift="RD1" class="shift-btn bg-gray-200 hover:bg-emerald-200 text-gray-700 font-medium py-3 rounded-lg transition-colors">RD1</button>
+                <button data-shift="RD2" class="shift-btn bg-gray-200 hover:bg-emerald-200 text-gray-700 font-medium py-3 rounded-lg transition-colors">RD2</button>
+                <button data-shift="RD3" class="shift-btn bg-gray-200 hover:bg-emerald-200 text-gray-700 font-medium py-3 rounded-lg transition-colors">RD3</button>
+                <button data-shift="RD4" class="shift-btn bg-gray-200 hover:bg-emerald-200 text-gray-700 font-medium py-3 rounded-lg transition-colors">RD4</button>
+                <button data-shift="RD5" class="shift-btn bg-gray-200 hover:bg-emerald-200 text-gray-700 font-medium py-3 rounded-lg transition-colors">RD5</button>
+            </div>
+            
+            <!-- Trennlinie ohne zusätzliche Margins, da der Abstand durch den Parent-Container geregelt wird -->
+            <hr class="border-t-2 border-emerald-500">
 
-        <p class="text-gray-600 mb-2">Oder Freitext:</p>
-        <div class="flex gap-2">
-            <input type="text" id="freeText" placeholder="Z.B. Urlaub, Fortbildung" class="flex-grow p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-shadow">
-            <button id="saveFreeText" class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg transition-colors">Speichern</button>
+            <div class="grid grid-cols-3 gap-3" id="nightShiftButtons">
+                <button data-shift="RDN1" class="shift-btn bg-gray-200 hover:bg-emerald-200 text-gray-700 font-medium py-3 rounded-lg transition-colors">RDN1</button>
+                <button data-shift="RDN2" class="shift-btn bg-gray-200 hover:bg-emerald-200 text-gray-700 font-medium py-3 rounded-lg transition-colors">RDN2</button>
+            </div>
+
+            <!-- Trennlinie vor dem Freitextfeld -->
+            <hr class="border-t-2 border-emerald-500">
+
+            <p class="text-gray-600">Oder Freitext:</p>
+            <div class="flex gap-2">
+                <input type="text" id="freeText" placeholder="Z.B. Urlaub, Fortbildung" class="flex-grow p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-shadow">
+                <button id="saveFreeText" class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg transition-colors">Speichern</button>
+            </div>
         </div>
     </dialog>
 
@@ -114,9 +127,11 @@
             const currentMonthAndYearEl = document.getElementById('currentMonthAndYear');
             const prevMonthBtn = document.getElementById('prevMonth');
             const nextMonthBtn = document.getElementById('nextMonth');
-            const eventModal = document.getElementById('eventModal'); // Jetzt ein <dialog>-Element
+            const eventModal = document.getElementById('eventModal');
             const modalDateEl = document.getElementById('modalDate');
-            const shiftButtonsEl = document.getElementById('shiftButtons');
+            // Die Event-Listener müssen jetzt auf die neuen Container lauschen
+            const dayShiftButtonsEl = document.getElementById('dayShiftButtons');
+            const nightShiftButtonsEl = document.getElementById('nightShiftButtons');
             const freeTextEl = document.getElementById('freeText');
             const saveFreeTextBtn = document.getElementById('saveFreeText');
             const closeModalBtn = document.getElementById('closeModal');
@@ -143,19 +158,19 @@
             function openModal(date) {
                 selectedDate = date;
                 modalDateEl.textContent = new Date(selectedDate).toLocaleDateString('de-DE', { dateStyle: 'long' });
-                eventModal.showModal(); // Verwendet die native showModal() Methode
+                eventModal.showModal();
             }
 
             // Funktion zum Schließen des Modals und Zurücksetzen des Zustands
             function closeModal() {
-                eventModal.close(); // Verwendet die native close() Methode
+                eventModal.close();
                 selectedDate = null;
                 freeTextEl.value = '';
             }
 
             // Funktion zum Rendern des Kalenders
             function renderCalendar() {
-                calendarEl.innerHTML = ''; // Kalender leeren
+                calendarEl.innerHTML = '';
                 
                 const year = currentDate.getFullYear();
                 const month = currentDate.getMonth();
@@ -258,7 +273,12 @@
             }
 
             // Event-Listener für die Schicht-Buttons im Modal
-            shiftButtonsEl.addEventListener('click', (e) => {
+            dayShiftButtonsEl.addEventListener('click', (e) => {
+                if (e.target.classList.contains('shift-btn')) {
+                    addEvent(e.target.dataset.shift);
+                }
+            });
+            nightShiftButtonsEl.addEventListener('click', (e) => {
                 if (e.target.classList.contains('shift-btn')) {
                     addEvent(e.target.dataset.shift);
                 }
@@ -292,9 +312,12 @@
                     return;
                 }
                 
-                let icsContent = `BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//Dienstplan Ersteller//DE\n`;
+                // Monatsnamen des ersten Termins für den Dateinamen abrufen
+                const firstEventDate = new Date(events[0].date);
+                const monthName = firstEventDate.toLocaleString('de-DE', { month: 'long' });
+                const filename = `dienstplan-${monthName.toLowerCase()}.ics`;
+
+                let icsContent = `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Dienstplan Ersteller//DE\n`;
 
                 events.forEach(event => {
                     const date = new Date(event.date);
@@ -307,13 +330,7 @@ PRODID:-//Dienstplan Ersteller//DE\n`;
                     const nextDayMonth = String(nextDayDate.getMonth() + 1).padStart(2, '0');
                     const nextDay = String(nextDayDate.getDate()).padStart(2, '0');
                     
-                    icsContent += `BEGIN:VEVENT
-UID:${event.date}-${event.shift}@dienstplan.creator
-DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z
-DTSTART;VALUE=DATE:${year}${month}${day}
-DTEND;VALUE=DATE:${nextDayYear}${nextDayMonth}${nextDay}
-SUMMARY:${event.shift}
-END:VEVENT\n`;
+                    icsContent += `BEGIN:VEVENT\nUID:${event.date}-${event.shift}@dienstplan.creator\nDTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z\nDTSTART;VALUE=DATE:${year}${month}${day}\nDTEND;VALUE=DATE:${nextDayYear}${nextDayMonth}${nextDay}\nSUMMARY:${event.shift}\nEND:VEVENT\n`;
                 });
 
                 icsContent += `END:VCALENDAR`;
@@ -321,7 +338,7 @@ END:VEVENT\n`;
                 const blob = new Blob([icsContent], { type: 'text/calendar' });
                 const a = document.createElement('a');
                 a.href = URL.createObjectURL(blob);
-                a.download = 'dienstplan.ics';
+                a.download = filename;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
