@@ -19,11 +19,6 @@
         .calendar-day:not(.is-not-current-month):hover {
             background-color: #e2e8f0; /* Leichtes Grau für Hover */
         }
-        .calendar-day.is-selected {
-            background-color: #a7f3d0; /* Helles Grün für ausgewählte Tage */
-            color: #064e3b;
-            font-weight: bold;
-        }
 
         /* Styling für das Dialog-Modal */
         dialog::backdrop {
@@ -65,14 +60,14 @@
 
         <!-- Termin-Liste und Download-Bereich -->
         <div class="bg-gray-50 p-6 rounded-2xl shadow-inner flex flex-col h-full">
-            <!-- Text von "Arbeitstage" zu "Dienste" geändert -->
             <h3 class="text-xl font-bold text-gray-800 mb-4">Dienste (<span id="totalEvents">0</span>)</h3>
             <ul id="eventList" class="space-y-3 flex-grow overflow-y-auto pr-2">
                 <!-- Termin-Einträge werden hier von JavaScript eingefügt -->
             </ul>
             <div class="mt-6 pt-4 border-t border-gray-200">
+                <!-- Text von "Download .ics" zu "Download Dienstplan" geändert -->
                 <button id="downloadIcs" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 px-6 rounded-xl shadow-md transition-colors duration-200">
-                    Download .ics
+                    Download Dienstplan
                 </button>
                 <!-- Benachrichtigungsbox für den Download-Fehler -->
                 <div id="messageBox" class="mt-2 hidden text-sm bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded-xl" role="alert">
@@ -167,6 +162,9 @@
             let selectedDate = null;
             let events = [];
 
+            // Liste der vordefinierten Schichten
+            const predefinedShifts = ["RD1", "RD2", "RD3", "RD4", "RD5", "RDN1", "RDN2"];
+
             // Funktion zum Anzeigen einer temporären Meldung
             function showMessage(message) {
                 messageBox.textContent = message;
@@ -236,10 +234,19 @@
                     
                     const existingEvent = events.find(e => e.date === dayFullDate);
                     if (existingEvent) {
-                        dayEl.classList.add('is-selected');
+                        // Neue Logik zur Unterscheidung der Farben im Kalender
+                        if (existingEvent.type === 'predefined') {
+                            dayEl.classList.add('bg-emerald-200');
+                        } else {
+                            dayEl.classList.add('bg-teal-200');
+                        }
+                        
                         const eventTextEl = document.createElement('div');
                         eventTextEl.textContent = existingEvent.shift;
-                        eventTextEl.className = 'text-xs mt-1 text-emerald-800 font-bold absolute bottom-1 truncate w-full px-1';
+
+                        // Neue Logik zur Unterscheidung der Textfarben
+                        const textColorClass = existingEvent.type === 'predefined' ? 'text-emerald-800' : 'text-teal-800';
+                        eventTextEl.className = `text-xs mt-1 ${textColorClass} font-bold absolute bottom-1 truncate w-full px-1`;
                         dayEl.appendChild(eventTextEl);
                     }
 
@@ -275,8 +282,12 @@
                     const textContainer = document.createElement('div');
                     textContainer.className = 'flex items-center';
                     const formattedDate = new Date(event.date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                    
+                    // Bestimmen der CSS-Klasse basierend auf dem Event-Typ
+                    const shiftClass = event.type === 'predefined' ? 'text-emerald-700' : 'text-teal-600';
+
                     // Kombiniert den gesamten Text in einem span, um das Leerzeichen zu garantieren
-                    textContainer.innerHTML = `<span class="text-gray-700 font-medium">${formattedDate}: </span><span class="text-emerald-700 font-bold">${event.shift}</span>`;
+                    textContainer.innerHTML = `<span class="text-gray-700 font-medium">${formattedDate}: </span><span class="${shiftClass} font-bold">${event.shift}</span>`;
 
                     const deleteBtn = document.createElement('button');
                     deleteBtn.innerHTML = '&times;';
@@ -296,11 +307,13 @@
             // Funktion zum Hinzufügen eines neuen Termins
             function addEvent(shift) {
                 if (selectedDate) {
+                    const eventType = predefinedShifts.includes(shift) ? 'predefined' : 'freeText';
                     const existingEventIndex = events.findIndex(e => e.date === selectedDate);
                     if (existingEventIndex !== -1) {
                         events[existingEventIndex].shift = shift;
+                        events[existingEventIndex].type = eventType;
                     } else {
-                        events.push({ date: selectedDate, shift: shift });
+                        events.push({ date: selectedDate, shift: shift, type: eventType });
                     }
                     updateEventList();
                     renderCalendar();
