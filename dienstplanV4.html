@@ -124,6 +124,20 @@
             </div>
         </div>
     </dialog>
+    
+    <!-- Neues Pop-up für das Easter Egg -->
+    <dialog id="easterEggModal" class="p-8 w-full max-w-md rounded-3xl shadow-2xl text-center">
+        <div class="flex flex-col items-center gap-6">
+            <!-- Lorbeerkranz SVG als Ersatz für den Tiroler Adler -->
+            <svg class="h-24 w-24 text-green-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C8.134 2 5 5.134 5 9c0 2.455 1.258 4.646 3.197 5.927l-2.613 2.614c-.39.391-.39 1.024 0 1.415.391.39 1.024.39 1.415 0l2.614-2.613C9.354 17.742 11.545 19 14 19c3.866 0 7-3.134 7-7s-3.134-7-7-7zm0 14c-2.757 0-5-2.243-5-5s2.243-5 5-5 5 2.243 5 5-2.243 5-5 5zm5.727-8.106l-2.02-2.02c-.391-.391-1.024-.391-1.415 0-.39.39-.39 1.024 0 1.414l2.02 2.02c.39.39 1.024.39 1.414 0 .391-.39.391-1.024 0-1.414zM8.273 8.106c-.39-.39-.39-1.024 0-1.414s1.024-.39 1.414 0l2.02 2.02c.391.39 0 1.024-.39 1.414s-1.024 0-1.414-.39l-2.02-2.02z"/>
+            </svg>
+            <p class="text-gray-800 text-lg font-bold">Mit diesem Dienst trägst du die Bürde des Landes Tirol. Die Bevölkerung kann stolz auf dich sein</p>
+            <button id="closeEasterEggModal" class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 px-6 rounded-xl shadow-md transition-colors duration-200">
+                Schließen
+            </button>
+        </div>
+    </dialog>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
@@ -134,7 +148,6 @@
             const nextMonthBtn = document.getElementById('nextMonth');
             const eventModal = document.getElementById('eventModal');
             const modalDateEl = document.getElementById('modalDate');
-            // Die Event-Listener müssen jetzt auf die neuen Container lauschen
             const dayShiftButtonsEl = document.getElementById('dayShiftButtons');
             const nightShiftButtonsEl = document.getElementById('nightShiftButtons');
             const freeTextEl = document.getElementById('freeText');
@@ -144,6 +157,10 @@
             const totalEventsEl = document.getElementById('totalEvents');
             const downloadIcsBtn = document.getElementById('downloadIcs');
             const messageBox = document.getElementById('messageBox');
+            
+            // Neue DOM-Elemente für das Easter Egg Pop-up
+            const easterEggModal = document.getElementById('easterEggModal');
+            const closeEasterEggModalBtn = document.getElementById('closeEasterEggModal');
 
             // Zustand verwalten
             let currentDate = new Date();
@@ -171,6 +188,11 @@
                 eventModal.close();
                 selectedDate = null;
                 freeTextEl.value = '';
+            }
+
+            // Funktion zum Schließen des Easter Egg Modals
+            function closeEasterEggModal() {
+                easterEggModal.close();
             }
 
             // Funktion zum Rendern des Kalenders
@@ -301,13 +323,19 @@
             // Event-Listener für den Freitext-Speichern-Button
             saveFreeTextBtn.addEventListener('click', () => {
                 const freeTextValue = freeTextEl.value.trim();
-                if (freeTextValue) {
+                // Überprüfen, ob das Easter Egg ausgelöst werden soll
+                if (freeTextValue === "Sillian Lotse") {
+                    closeModal();
+                    easterEggModal.showModal();
+                } else if (freeTextValue) {
                     addEvent(freeTextValue);
                 }
             });
 
-            // Event-Listener zum Schließen des Modals
+            // Event-Listener zum Schließen des Haupt-Modals
             closeModalBtn.addEventListener('click', closeModal);
+            // Event-Listener zum Schließen des Easter Egg Modals
+            closeEasterEggModalBtn.addEventListener('click', closeEasterEggModal);
 
             // Event-Listener für Monat-Navigation
             prevMonthBtn.addEventListener('click', () => {
