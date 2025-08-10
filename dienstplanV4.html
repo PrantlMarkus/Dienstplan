@@ -43,14 +43,17 @@
                 </button>
             </div>
             
-            <div class="grid grid-cols-7 text-center font-semibold text-gray-600 mb-2">
-                <div class="p-2">Mo</div>
-                <div class="p-2">Di</div>
-                <div class="p-2">Mi</div>
-                <div class="p-2">Do</div>
-                <div class="p-2">Fr</div>
-                <div class="p-2 text-red-500">Sa</div>
-                <div class="p-2 text-red-500">So</div>
+            <!-- Die Tagesabkürzungen mit dem neuen Styling -->
+            <div class="grid grid-cols-7 text-center font-semibold text-white mb-2">
+                <div class="p-2 bg-emerald-500 rounded-l-lg">Mo</div>
+                <div class="p-2 bg-emerald-500">Di</div>
+                <div class="p-2 bg-emerald-500">Mi</div>
+                <div class="p-2 bg-emerald-500">Do</div>
+                <div class="p-2 bg-emerald-500">Fr</div>
+                <!-- Angepasste Farbe für Samstag -->
+                <div class="p-2 bg-emerald-500 text-red-600">Sa</div>
+                <!-- Angepasste Farbe für Sonntag -->
+                <div class="p-2 bg-emerald-500 rounded-r-lg text-red-600">So</div>
             </div>
             
             <div id="calendar" class="grid grid-cols-7 gap-1 text-center">
@@ -159,6 +162,8 @@
 
             // Zustand verwalten
             let currentDate = new Date();
+            // Standardmäßig 2 Monate in der Zukunft anzeigen
+            currentDate.setMonth(currentDate.getMonth() + 2);
             let selectedDate = null;
             let events = [];
 
@@ -234,18 +239,29 @@
                     
                     const existingEvent = events.find(e => e.date === dayFullDate);
                     if (existingEvent) {
-                        // Neue Logik zur Unterscheidung der Farben im Kalender
+                        let bgColorClass, textColorClass;
+                        // Logik zur Unterscheidung von Tagdienst, Nachtdienst und Freitext
                         if (existingEvent.type === 'predefined') {
-                            dayEl.classList.add('bg-emerald-200');
+                            if (existingEvent.shift.startsWith('RDN')) {
+                                // Nachtdienst - Kräftiger Grünton
+                                bgColorClass = 'bg-emerald-500';
+                                textColorClass = 'text-white';
+                            } else {
+                                // Tagdienst - Heller Grünton (bg-emerald-400)
+                                bgColorClass = 'bg-emerald-400';
+                                textColorClass = 'text-white';
+                            }
                         } else {
-                            dayEl.classList.add('bg-teal-200');
+                            // Freitext-Eintrag
+                            bgColorClass = 'bg-purple-200';
+                            textColorClass = 'text-purple-800';
                         }
+                        
+                        dayEl.classList.add(bgColorClass);
                         
                         const eventTextEl = document.createElement('div');
                         eventTextEl.textContent = existingEvent.shift;
 
-                        // Neue Logik zur Unterscheidung der Textfarben
-                        const textColorClass = existingEvent.type === 'predefined' ? 'text-emerald-800' : 'text-teal-800';
                         eventTextEl.className = `text-xs mt-1 ${textColorClass} font-bold absolute bottom-1 truncate w-full px-1`;
                         dayEl.appendChild(eventTextEl);
                     }
@@ -281,13 +297,14 @@
                     
                     const textContainer = document.createElement('div');
                     textContainer.className = 'flex items-center';
-                    const formattedDate = new Date(event.date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                    // Änderung: Monat wird jetzt ausgeschrieben
+                    const formattedDate = new Date(event.date).toLocaleDateString('de-DE', { day: '2-digit', month: 'long' });
                     
                     // Bestimmen der CSS-Klasse basierend auf dem Event-Typ
-                    const shiftClass = event.type === 'predefined' ? 'text-emerald-700' : 'text-teal-600';
+                    const shiftClass = event.type === 'predefined' ? 'text-emerald-700' : 'text-purple-700';
 
-                    // Kombiniert den gesamten Text in einem span, um das Leerzeichen zu garantieren
-                    textContainer.innerHTML = `<span class="text-gray-700 font-medium">${formattedDate}: </span><span class="${shiftClass} font-bold">${event.shift}</span>`;
+                    // Änderung: Doppelpunkt durch Bindestrich mit Leerzeichen ersetzt
+                    textContainer.innerHTML = `<span class="text-gray-700 font-medium">${formattedDate} - </span><span class="${shiftClass} font-bold">${event.shift}</span>`;
 
                     const deleteBtn = document.createElement('button');
                     deleteBtn.innerHTML = '&times;';
