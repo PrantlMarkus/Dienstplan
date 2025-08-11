@@ -10,6 +10,7 @@
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         body {
             font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
         }
         /* Styling für Kalendertage */
         .calendar-day:not(.is-not-current-month) {
@@ -65,7 +66,7 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+<body class="flex items-center justify-center min-h-screen p-4">
     <!-- Hauptcontainer der Anwendung -->
     <div class="bg-white rounded-3xl shadow-xl w-full max-w-6xl p-8 grid lg:grid-cols-2 gap-8">
         
@@ -246,7 +247,7 @@
                 easterEggModal.close();
             }
 
-            // Hilfsfunktionen für die TTS-Integration
+            // Hilfsfunktionen für die TTS-Integration (Gemini API)
             function base64ToArrayBuffer(base64) {
                 const binaryString = atob(base64);
                 const len = binaryString.length;
@@ -295,63 +296,77 @@
                 }
             }
 
-            // Funktion zur Sprachausgabe
-            async function sayText(text, buttonEl) {
+            // Funktion zur Sprachsynthese über die Gemini API
+            async function speakWithGeminiAPI(text) {
+                const payload = {
+                    contents: [{
+                        parts: [{ text: text }]
+                    }],
+                    generationConfig: {
+                        responseModalities: ["AUDIO"],
+                        speechConfig: {
+                            voiceConfig: {
+                                prebuiltVoiceConfig: { voiceName: "Leda" }
+                            }
+                        }
+                    },
+                    model: "gemini-2.5-flash-preview-tts"
+                };
+
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                
+                const part = result?.candidates?.[0]?.content?.parts?.[0];
+                const audioData = part?.inlineData?.data;
+                const mimeType = part?.inlineData?.mimeType;
+
+                if (audioData && mimeType && mimeType.startsWith("audio/")) {
+                    const sampleRate = parseInt(mimeType.match(/rate=(\d+)/)[1], 10);
+                    const pcmData = base64ToArrayBuffer(audioData);
+                    const pcm16 = new Int16Array(pcmData);
+                    const wavBlob = pcmToWav(pcm16, sampleRate);
+                    const audioUrl = URL.createObjectURL(wavBlob);
+                    
+                    const audio = new Audio(audioUrl);
+                    audio.play();
+                    
+                    audio.onended = () => {
+                        URL.revokeObjectURL(audioUrl);
+                    };
+                } else {
+                    throw new Error('Ungültige Audio-Daten von der API erhalten.');
+                }
+            }
+
+            // Fallback-Funktion für die native Sprachsynthese
+            function speakWithFallback(text) {
+                if ('speechSynthesis' in window) {
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    utterance.lang = 'de-DE'; // Setzt die Sprache auf Deutsch
+                    window.speechSynthesis.speak(utterance);
+                } else {
+                    showMessage('Sprachsynthese wird von diesem Browser nicht unterstützt.');
+                }
+            }
+
+            // Hauptfunktion für die Sprachausgabe mit Fallback
+            async function sayTextWithFallback(text, buttonEl) {
                 const originalContent = buttonEl.innerHTML;
                 buttonEl.innerHTML = '<div class="spinner"></div>';
                 buttonEl.disabled = true;
 
                 try {
-                    const payload = {
-                        contents: [{
-                            parts: [{ text: text }]
-                        }],
-                        generationConfig: {
-                            responseModalities: ["AUDIO"],
-                            speechConfig: {
-                                voiceConfig: {
-                                    // Ändern der Stimme auf Leda
-                                    prebuiltVoiceConfig: { voiceName: "Leda" }
-                                }
-                            }
-                        },
-                        model: "gemini-2.5-flash-preview-tts"
-                    };
-
-                    const apiKey = "";
-                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
-
-                    const response = await fetch(apiUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-                    const result = await response.json();
-                    
-                    const part = result?.candidates?.[0]?.content?.parts?.[0];
-                    const audioData = part?.inlineData?.data;
-                    const mimeType = part?.inlineData?.mimeType;
-
-                    if (audioData && mimeType && mimeType.startsWith("audio/")) {
-                        const sampleRate = parseInt(mimeType.match(/rate=(\d+)/)[1], 10);
-                        const pcmData = base64ToArrayBuffer(audioData);
-                        const pcm16 = new Int16Array(pcmData);
-                        const wavBlob = pcmToWav(pcm16, sampleRate);
-                        const audioUrl = URL.createObjectURL(wavBlob);
-                        
-                        const audio = new Audio(audioUrl);
-                        audio.play();
-                        
-                        // Nach dem Abspielen den Speicher wieder freigeben
-                        audio.onended = () => {
-                            URL.revokeObjectURL(audioUrl);
-                        };
-                    } else {
-                        throw new Error('Ungültige Audio-Daten erhalten.');
-                    }
+                    await speakWithGeminiAPI(text);
                 } catch (error) {
-                    console.error('Fehler bei der Sprachsynthese:', error);
-                    showMessage('Fehler bei der Sprachsynthese.');
+                    console.error('Fehler bei der Sprachsynthese-API:', error);
+                    speakWithFallback(text);
                 } finally {
                     buttonEl.innerHTML = originalContent;
                     buttonEl.disabled = false;
@@ -384,10 +399,7 @@
                 let combinedText = '';
 
                 // Anweisung für eine schnelle Sprechweise für den gesamten Text
-                combinedText += `Say in a fast pace: `;
-                const firstEventDate = new Date(events[0].date);
-                const monthName = firstEventDate.toLocaleString('de-DE', { month: 'long' });
-                combinedText += `Dienstplan für ${monthName}. `;
+                combinedText += `Dienstplan für ${new Date(events[0].date).toLocaleString('de-DE', { month: 'long' })}. `;
 
                 // Bestimme die ISO-Wochennummer des ersten angezeigten Tages im Kalender
                 const year = currentDate.getFullYear();
@@ -445,8 +457,8 @@
                 // Füge das Selbstlob am Ende hinzu
                 combinedText += `Die Bevölkerung des Landes Tirol dankt dir für deine Aufopferung. Eine Dimme - Pommes.`;
                 
-                // Ruft die bestehende sayText Funktion auf
-                await sayText(combinedText, buttonEl);
+                // Ruft die neue Funktion mit Fallback auf
+                await sayTextWithFallback(combinedText, buttonEl);
 
                 buttonEl.innerHTML = originalContent;
                 buttonEl.disabled = false;
@@ -515,7 +527,6 @@
 
                     // Event-Listener für das Modal-Fenster
                     dayEl.addEventListener('click', () => {
-                        // Verhindert, dass das Modal beim Ziehen geöffnet wird
                         if (!dayEl.classList.contains('is-dragging')) {
                             openModal(dayFullDate);
                         }
@@ -558,10 +569,8 @@
                         if (draggedEventData) {
                             const newDate = e.target.closest('.calendar-day').dataset.date;
                             if (newDate && newDate !== draggedEventData.date) {
-                                // Finden und aktualisieren des Ereignisses
                                 const eventIndex = events.findIndex(e => e.date === draggedEventData.date);
                                 if (eventIndex !== -1) {
-                                    // Zuerst prüfen, ob es bereits einen Termin am neuen Datum gibt
                                     const existingEventAtNewDate = events.find(e => e.date === newDate);
                                     if (!existingEventAtNewDate) {
                                         events[eventIndex].date = newDate;
@@ -580,12 +589,11 @@
                     // Touch-Event-Listener für Long-Touch Drag-and-Drop
                     dayEl.addEventListener('touchstart', (e) => {
                         if (existingEvent) {
-                            e.preventDefault(); // Verhindert das Standard-Scroll-Verhalten
+                            e.preventDefault();
                             const touch = e.touches[0];
                             touchStartX = touch.clientX;
                             touchStartY = touch.clientY;
                             longPressTimer = setTimeout(() => {
-                                // Long-Touch erkannt, starten des "Drag"
                                 draggedEventData = existingEvent;
                                 e.target.classList.add('is-dragging');
                                 dragGhost.textContent = existingEvent.shift;
@@ -597,19 +605,16 @@
                     });
 
                     dayEl.addEventListener('touchmove', (e) => {
-                        // Wenn der Finger zu weit bewegt wird, Drag-Timer abbrechen
                         const touch = e.touches[0];
                         if (Math.abs(touch.clientX - touchStartX) > 10 || Math.abs(touch.clientY - touchStartY) > 10) {
                             clearTimeout(longPressTimer);
                         }
 
-                        // Drag-Ghost folgen lassen
                         if (draggedEventData) {
                             const touch = e.touches[0];
                             dragGhost.style.left = `${touch.clientX}px`;
                             dragGhost.style.top = `${touch.clientY}px`;
 
-                            // Highlighten des Drag-Ziels
                             const targetElement = document.elementFromPoint(touch.clientX, touch.clientY);
                             const newDragTargetEl = targetElement ? targetElement.closest('.calendar-day:not(.is-not-current-month)') : null;
                             if (dragTargetEl && dragTargetEl !== newDragTargetEl) {
@@ -687,7 +692,6 @@
                     const buttonContainer = document.createElement('div');
                     buttonContainer.className = 'flex gap-2 items-center';
                     
-                    // Die individuellen Buttons zur Sprachausgabe wurden entfernt
                     const deleteBtn = document.createElement('button');
                     deleteBtn.innerHTML = '&times;';
                     deleteBtn.className = 'bg-red-500 hover:bg-red-600 text-white font-bold h-6 w-6 rounded-full flex items-center justify-center transition-colors';
