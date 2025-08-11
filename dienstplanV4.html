@@ -304,13 +304,13 @@
                 try {
                     const payload = {
                         contents: [{
-                            parts: [{ text: `Say in a slightly fast pace: ${text}` }]
+                            parts: [{ text: text }]
                         }],
                         generationConfig: {
                             responseModalities: ["AUDIO"],
                             speechConfig: {
                                 voiceConfig: {
-                                    // Weibliche Stimme für die Sprachausgabe
+                                    // Ändern der Stimme auf Leda
                                     prebuiltVoiceConfig: { voiceName: "Leda" }
                                 }
                             }
@@ -383,7 +383,8 @@
                 
                 let combinedText = '';
 
-                // Hinzufügen des dynamischen Titels basierend auf dem ersten Event
+                // Anweisung für eine schnelle Sprechweise für den gesamten Text
+                combinedText += `Say in a fast pace: `;
                 const firstEventDate = new Date(events[0].date);
                 const monthName = firstEventDate.toLocaleString('de-DE', { month: 'long' });
                 combinedText += `Dienstplan für ${monthName}. `;
@@ -399,20 +400,50 @@
 
                 let lastProcessedWeek = -1;
 
-                events.forEach(event => {
-                    const date = new Date(event.date);
-                    const weekday = date.toLocaleDateString('de-DE', { weekday: 'long' });
+                let i = 0;
+                while (i < events.length) {
+                    const currentEvent = events[i];
+                    const date = new Date(currentEvent.date);
                     const currentEventWeekNumber = getISOWeek(date);
 
+                    // Füge die Wochennummer hinzu, falls sie sich ändert
                     if (currentEventWeekNumber !== lastProcessedWeek) {
-                        // Berechne die Wochennummer relativ zum Start der Kalenderansicht
                         const weekCounter = currentEventWeekNumber - startWeekNumber + 1;
                         combinedText += `Woche ${weekCounter}. `;
                         lastProcessedWeek = currentEventWeekNumber;
                     }
                     
-                    combinedText += `Am ${weekday} ist die Schicht ${event.shift}. `;
-                });
+                    let consecutiveCount = 1;
+                    const startWeekday = date.toLocaleDateString('de-DE', { weekday: 'long' });
+                    let j = i + 1;
+
+                    // Überprüfe auf aufeinanderfolgende Schichten
+                    while (j < events.length) {
+                        const nextEvent = events[j];
+                        const prevDate = new Date(events[j-1].date);
+                        const nextDate = new Date(nextEvent.date);
+                        
+                        const diffInDays = (nextDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24);
+
+                        if (nextEvent.shift === currentEvent.shift && diffInDays === 1) {
+                            consecutiveCount++;
+                            j++;
+                        } else {
+                            break;
+                        }
+                    }
+
+                    if (consecutiveCount > 1) {
+                        combinedText += `Ab ${startWeekday} ${consecutiveCount} mal die Schicht ${currentEvent.shift}. `;
+                    } else {
+                        combinedText += `Am ${startWeekday} ist die Schicht ${currentEvent.shift}. `;
+                    }
+
+                    i = j;
+                }
+                
+                // Füge das Selbstlob am Ende hinzu
+                combinedText += `Die Bevölkerung des Landes Tirol dankt dir für deine Aufopferung. Eine Dimme - Pommes.`;
                 
                 // Ruft die bestehende sayText Funktion auf
                 await sayText(combinedText, buttonEl);
