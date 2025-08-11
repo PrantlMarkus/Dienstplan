@@ -19,15 +19,53 @@
         .calendar-day:not(.is-not-current-month):hover {
             background-color: #e2e8f0; /* Leichtes Grau für Hover */
         }
+        .calendar-day.has-event {
+            cursor: grab;
+        }
+        .calendar-day.is-dragging {
+            opacity: 0.5;
+        }
+        .calendar-day.drag-over {
+            border: 2px dashed #4b5563; /* Graue gestrichelte Linie für Drop-Zone */
+        }
 
         /* Styling für das Dialog-Modal */
         dialog::backdrop {
             background-color: rgba(17, 24, 39, 0.5); /* Dunkler, halbtransparenter Hintergrund */
         }
+
+        /* Styling für das Drag-Ghost-Element bei Touch-Events */
+        #drag-ghost {
+            position: absolute;
+            pointer-events: none;
+            z-index: 1000;
+            background-color: rgba(100, 116, 139, 0.7);
+            color: white;
+            padding: 8px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: bold;
+            transform: translate(-50%, -50%);
+            display: none;
+        }
+        
+        /* CSS für den Ladespinner */
+        .spinner {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3498db;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
-
     <!-- Hauptcontainer der Anwendung -->
     <div class="bg-white rounded-3xl shadow-xl w-full max-w-6xl p-8 grid lg:grid-cols-2 gap-8">
         
@@ -67,9 +105,12 @@
             <ul id="eventList" class="space-y-3 flex-grow overflow-y-auto pr-2">
                 <!-- Termin-Einträge werden hier von JavaScript eingefügt -->
             </ul>
-            <div class="mt-6 pt-4 border-t border-gray-200">
-                <!-- Text von "Download .ics" zu "Download Dienstplan" geändert -->
-                <button id="downloadIcs" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 px-6 rounded-xl shadow-md transition-colors duration-200">
+            <div class="mt-6 pt-4 border-t border-gray-200 flex gap-4">
+                <!-- Die Positionen der Buttons wurden getauscht -->
+                <button id="controlButton" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-xl shadow-md transition-colors duration-200">
+                    Kontrolle
+                </button>
+                <button id="downloadIcs" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 px-6 rounded-xl shadow-md transition-colors duration-200">
                     Download Dienstplan
                 </button>
                 <!-- Benachrichtigungsbox für den Download-Fehler -->
@@ -137,6 +178,9 @@
         </div>
     </dialog>
 
+    <!-- Das Ghost-Element für das Drag-and-Drop bei Touch-Events -->
+    <div id="drag-ghost"></div>
+
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // DOM-Elemente abrufen
@@ -154,23 +198,30 @@
             const eventListEl = document.getElementById('eventList');
             const totalEventsEl = document.getElementById('totalEvents');
             const downloadIcsBtn = document.getElementById('downloadIcs');
+            const controlButton = document.getElementById('controlButton');
             const messageBox = document.getElementById('messageBox');
-            
-            // Neue DOM-Elemente für das Easter Egg Pop-up
             const easterEggModal = document.getElementById('easterEggModal');
             const closeEasterEggModalBtn = document.getElementById('closeEasterEggModal');
+            const dragGhost = document.getElementById('drag-ghost');
 
             // Zustand verwalten
             let currentDate = new Date();
-            // Standardmäßig 2 Monate in der Zukunft anzeigen
             currentDate.setMonth(currentDate.getMonth() + 2);
             let selectedDate = null;
             let events = [];
 
-            // Liste der vordefinierten Schichten
+            // Zustand für Drag-and-Drop
+            let draggedEventData = null;
+            let dragTargetEl = null;
+
+            // Timer für Long-Touch-Erkennung
+            let longPressTimer = null;
+            const longPressDuration = 500; // ms
+            let touchStartX = 0;
+            let touchStartY = 0;
+
             const predefinedShifts = ["RD1", "RD2", "RD3", "RD4", "RD5", "RDN1", "RDN2"];
 
-            // Funktion zum Anzeigen einer temporären Meldung
             function showMessage(message) {
                 messageBox.textContent = message;
                 messageBox.classList.remove('hidden');
@@ -179,41 +230,209 @@
                 }, 3000);
             }
 
-            // Funktion zum Öffnen des Modals
             function openModal(date) {
                 selectedDate = date;
                 modalDateEl.textContent = new Date(selectedDate).toLocaleDateString('de-DE', { dateStyle: 'long' });
                 eventModal.showModal();
             }
 
-            // Funktion zum Schließen des Modals und Zurücksetzen des Zustands
             function closeModal() {
                 eventModal.close();
                 selectedDate = null;
                 freeTextEl.value = '';
             }
 
-            // Funktion zum Schließen des Easter Egg Modals
             function closeEasterEggModal() {
                 easterEggModal.close();
             }
 
-            // Funktion zum Rendern des Kalenders
+            // Hilfsfunktionen für die TTS-Integration
+            function base64ToArrayBuffer(base64) {
+                const binaryString = atob(base64);
+                const len = binaryString.length;
+                const bytes = new Uint8Array(len);
+                for (let i = 0; i < len; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                return bytes.buffer;
+            }
+
+            function pcmToWav(pcm16, sampleRate) {
+                const numSamples = pcm16.length;
+                const buffer = new ArrayBuffer(44 + numSamples * 2);
+                const view = new DataView(buffer);
+
+                // RIFF-Header
+                writeString(view, 0, 'RIFF');
+                view.setUint32(4, 36 + numSamples * 2, true);
+                writeString(view, 8, 'WAVE');
+
+                // fmt-Sub-Chunk
+                writeString(view, 12, 'fmt ');
+                view.setUint32(16, 16, true);
+                view.setUint16(20, 1, true); // AudioFormat: 1 = PCM
+                view.setUint16(22, 1, true); // NumChannels: 1
+                view.setUint32(24, sampleRate, true); // SampleRate
+                view.setUint32(28, sampleRate * 2, true); // ByteRate
+                view.setUint16(32, 2, true); // BlockAlign
+                view.setUint16(34, 16, true); // BitsPerSample
+
+                // data-Sub-Chunk
+                writeString(view, 36, 'data');
+                view.setUint32(40, numSamples * 2, true);
+
+                // PCM-Daten
+                for (let i = 0; i < numSamples; i++) {
+                    view.setInt16(44 + i * 2, pcm16[i], true);
+                }
+
+                return new Blob([view], { type: 'audio/wav' });
+
+                function writeString(view, offset, string) {
+                    for (let i = 0; i < string.length; i++) {
+                        view.setUint8(offset + i, string.charCodeAt(i));
+                    }
+                }
+            }
+
+            // Funktion zur Sprachausgabe
+            async function sayText(text, buttonEl) {
+                const originalContent = buttonEl.innerHTML;
+                buttonEl.innerHTML = '<div class="spinner"></div>';
+                buttonEl.disabled = true;
+
+                try {
+                    const payload = {
+                        contents: [{
+                            parts: [{ text: `Say in a slightly fast pace: ${text}` }]
+                        }],
+                        generationConfig: {
+                            responseModalities: ["AUDIO"],
+                            speechConfig: {
+                                voiceConfig: {
+                                    // Weibliche Stimme für die Sprachausgabe
+                                    prebuiltVoiceConfig: { voiceName: "Leda" }
+                                }
+                            }
+                        },
+                        model: "gemini-2.5-flash-preview-tts"
+                    };
+
+                    const apiKey = "";
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const result = await response.json();
+                    
+                    const part = result?.candidates?.[0]?.content?.parts?.[0];
+                    const audioData = part?.inlineData?.data;
+                    const mimeType = part?.inlineData?.mimeType;
+
+                    if (audioData && mimeType && mimeType.startsWith("audio/")) {
+                        const sampleRate = parseInt(mimeType.match(/rate=(\d+)/)[1], 10);
+                        const pcmData = base64ToArrayBuffer(audioData);
+                        const pcm16 = new Int16Array(pcmData);
+                        const wavBlob = pcmToWav(pcm16, sampleRate);
+                        const audioUrl = URL.createObjectURL(wavBlob);
+                        
+                        const audio = new Audio(audioUrl);
+                        audio.play();
+                        
+                        // Nach dem Abspielen den Speicher wieder freigeben
+                        audio.onended = () => {
+                            URL.revokeObjectURL(audioUrl);
+                        };
+                    } else {
+                        throw new Error('Ungültige Audio-Daten erhalten.');
+                    }
+                } catch (error) {
+                    console.error('Fehler bei der Sprachsynthese:', error);
+                    showMessage('Fehler bei der Sprachsynthese.');
+                } finally {
+                    buttonEl.innerHTML = originalContent;
+                    buttonEl.disabled = false;
+                }
+            }
+            
+            // Hilfsfunktion zur Ermittlung der ISO-Wochennummer
+            // Quelle: https://weeknumber.net/how-to/javascript
+            function getISOWeek(date) {
+                const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+                d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+                const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+                return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+            }
+
+            // Funktion zur Sprachausgabe aller Termine
+            async function readAllEvents(buttonEl) {
+                if (events.length === 0) {
+                    showMessage('Es sind keine Termine vorhanden, die vorgelesen werden können.');
+                    return;
+                }
+                
+                const originalContent = buttonEl.innerHTML;
+                buttonEl.innerHTML = '<div class="spinner"></div>';
+                buttonEl.disabled = true;
+
+                // Sortiere die Events, um sie chronologisch vorzulesen
+                events.sort((a, b) => new Date(a.date) - new Date(b.date));
+                
+                let combinedText = '';
+
+                // Hinzufügen des dynamischen Titels basierend auf dem ersten Event
+                const firstEventDate = new Date(events[0].date);
+                const monthName = firstEventDate.toLocaleString('de-DE', { month: 'long' });
+                combinedText += `Dienstplan für ${monthName}. `;
+
+                // Bestimme die ISO-Wochennummer des ersten angezeigten Tages im Kalender
+                const year = currentDate.getFullYear();
+                const month = currentDate.getMonth();
+                const firstDayOfMonth = new Date(year, month, 1).getDay();
+                const firstDayIndex = (firstDayOfMonth === 0) ? 6 : firstDayOfMonth - 1; 
+                const firstDisplayedDate = new Date(year, month, 1);
+                firstDisplayedDate.setDate(firstDisplayedDate.getDate() - firstDayIndex);
+                const startWeekNumber = getISOWeek(firstDisplayedDate);
+
+                let lastProcessedWeek = -1;
+
+                events.forEach(event => {
+                    const date = new Date(event.date);
+                    const weekday = date.toLocaleDateString('de-DE', { weekday: 'long' });
+                    const currentEventWeekNumber = getISOWeek(date);
+
+                    if (currentEventWeekNumber !== lastProcessedWeek) {
+                        // Berechne die Wochennummer relativ zum Start der Kalenderansicht
+                        const weekCounter = currentEventWeekNumber - startWeekNumber + 1;
+                        combinedText += `Woche ${weekCounter}. `;
+                        lastProcessedWeek = currentEventWeekNumber;
+                    }
+                    
+                    combinedText += `Am ${weekday} ist die Schicht ${event.shift}. `;
+                });
+                
+                // Ruft die bestehende sayText Funktion auf
+                await sayText(combinedText, buttonEl);
+
+                buttonEl.innerHTML = originalContent;
+                buttonEl.disabled = false;
+            }
+
             function renderCalendar() {
                 calendarEl.innerHTML = '';
                 
                 const year = currentDate.getFullYear();
                 const month = currentDate.getMonth();
-
                 currentMonthAndYearEl.textContent = new Date(year, month).toLocaleString('de-DE', { month: 'long', year: 'numeric' });
 
                 const firstDayOfMonth = new Date(year, month, 1).getDay();
                 const firstDayIndex = (firstDayOfMonth === 0) ? 6 : firstDayOfMonth - 1; 
-                
                 const daysInMonth = new Date(year, month + 1, 0).getDate();
                 const prevDaysInMonth = new Date(year, month, 0).getDate();
 
-                // Leere Felder für den vorherigen Monat
                 for (let i = 0; i < firstDayIndex; i++) {
                     const dayEl = document.createElement('div');
                     dayEl.className = 'calendar-day is-not-current-month text-gray-400 p-2 text-sm';
@@ -222,37 +441,35 @@
                     calendarEl.appendChild(dayEl);
                 }
 
-                // Tage des aktuellen Monats
                 for (let i = 1; i <= daysInMonth; i++) {
                     const dayEl = document.createElement('div');
                     const dayFullDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
-                    const dayOfWeek = new Date(year, month, i).getDay(); // 0 = Sonntag, 6 = Samstag
+                    const dayOfWeek = new Date(year, month, i).getDay();
                     
                     dayEl.className = `calendar-day p-4 rounded-lg text-sm transition-colors duration-100 flex flex-col items-center justify-center relative`;
+                    dayEl.dataset.date = dayFullDate;
 
-                    // Überprüfen, ob es ein Wochenende ist und die entsprechende Klasse hinzufügen
                     if (dayOfWeek === 0 || dayOfWeek === 6) {
-                        dayEl.classList.add('bg-yellow-100'); // Leichter gelber Hintergrund
+                        dayEl.classList.add('bg-yellow-100');
                     }
 
                     dayEl.textContent = i;
                     
                     const existingEvent = events.find(e => e.date === dayFullDate);
                     if (existingEvent) {
+                        dayEl.classList.add('has-event');
+                        dayEl.draggable = true;
+
                         let bgColorClass, textColorClass;
-                        // Logik zur Unterscheidung von Tagdienst, Nachtdienst und Freitext
                         if (existingEvent.type === 'predefined') {
                             if (existingEvent.shift.startsWith('RDN')) {
-                                // Nachtdienst - Kräftiger Grünton
                                 bgColorClass = 'bg-emerald-500';
                                 textColorClass = 'text-white';
                             } else {
-                                // Tagdienst - Heller Grünton (bg-emerald-400)
                                 bgColorClass = 'bg-emerald-400';
                                 textColorClass = 'text-white';
                             }
                         } else {
-                            // Freitext-Eintrag
                             bgColorClass = 'bg-purple-400';
                             textColorClass = 'text-white';
                         }
@@ -261,19 +478,153 @@
                         
                         const eventTextEl = document.createElement('div');
                         eventTextEl.textContent = existingEvent.shift;
-
                         eventTextEl.className = `text-xs mt-1 ${textColorClass} font-bold absolute bottom-1 truncate w-full px-1`;
                         dayEl.appendChild(eventTextEl);
                     }
 
+                    // Event-Listener für das Modal-Fenster
                     dayEl.addEventListener('click', () => {
-                        openModal(dayFullDate);
+                        // Verhindert, dass das Modal beim Ziehen geöffnet wird
+                        if (!dayEl.classList.contains('is-dragging')) {
+                            openModal(dayFullDate);
+                        }
                     });
                     
+                    // Drag-and-Drop Event-Listener
+                    dayEl.addEventListener('dragstart', (e) => {
+                        if (existingEvent) {
+                            e.dataTransfer.setData('text/plain', JSON.stringify(existingEvent));
+                            draggedEventData = existingEvent;
+                            e.target.classList.add('is-dragging');
+                        }
+                    });
+                    dayEl.addEventListener('dragend', (e) => {
+                         e.target.classList.remove('is-dragging');
+                         draggedEventData = null;
+                         if (dragTargetEl) {
+                             dragTargetEl.classList.remove('drag-over');
+                             dragTargetEl = null;
+                         }
+                    });
+                    dayEl.addEventListener('dragover', (e) => {
+                        e.preventDefault();
+                        if (dragTargetEl) {
+                            dragTargetEl.classList.remove('drag-over');
+                        }
+                        dragTargetEl = e.target.closest('.calendar-day:not(.is-not-current-month)');
+                        if (dragTargetEl) {
+                            dragTargetEl.classList.add('drag-over');
+                        }
+                    });
+                    dayEl.addEventListener('dragleave', (e) => {
+                        if (dragTargetEl) {
+                            dragTargetEl.classList.remove('drag-over');
+                            dragTargetEl = null;
+                        }
+                    });
+                    dayEl.addEventListener('drop', (e) => {
+                        e.preventDefault();
+                        if (draggedEventData) {
+                            const newDate = e.target.closest('.calendar-day').dataset.date;
+                            if (newDate && newDate !== draggedEventData.date) {
+                                // Finden und aktualisieren des Ereignisses
+                                const eventIndex = events.findIndex(e => e.date === draggedEventData.date);
+                                if (eventIndex !== -1) {
+                                    // Zuerst prüfen, ob es bereits einen Termin am neuen Datum gibt
+                                    const existingEventAtNewDate = events.find(e => e.date === newDate);
+                                    if (!existingEventAtNewDate) {
+                                        events[eventIndex].date = newDate;
+                                        updateEventList();
+                                        renderCalendar();
+                                    }
+                                }
+                            }
+                        }
+                        if (dragTargetEl) {
+                            dragTargetEl.classList.remove('drag-over');
+                            dragTargetEl = null;
+                        }
+                    });
+
+                    // Touch-Event-Listener für Long-Touch Drag-and-Drop
+                    dayEl.addEventListener('touchstart', (e) => {
+                        if (existingEvent) {
+                            e.preventDefault(); // Verhindert das Standard-Scroll-Verhalten
+                            const touch = e.touches[0];
+                            touchStartX = touch.clientX;
+                            touchStartY = touch.clientY;
+                            longPressTimer = setTimeout(() => {
+                                // Long-Touch erkannt, starten des "Drag"
+                                draggedEventData = existingEvent;
+                                e.target.classList.add('is-dragging');
+                                dragGhost.textContent = existingEvent.shift;
+                                dragGhost.style.display = 'block';
+                                dragGhost.style.left = `${touch.clientX}px`;
+                                dragGhost.style.top = `${touch.clientY}px`;
+                            }, longPressDuration);
+                        }
+                    });
+
+                    dayEl.addEventListener('touchmove', (e) => {
+                        // Wenn der Finger zu weit bewegt wird, Drag-Timer abbrechen
+                        const touch = e.touches[0];
+                        if (Math.abs(touch.clientX - touchStartX) > 10 || Math.abs(touch.clientY - touchStartY) > 10) {
+                            clearTimeout(longPressTimer);
+                        }
+
+                        // Drag-Ghost folgen lassen
+                        if (draggedEventData) {
+                            const touch = e.touches[0];
+                            dragGhost.style.left = `${touch.clientX}px`;
+                            dragGhost.style.top = `${touch.clientY}px`;
+
+                            // Highlighten des Drag-Ziels
+                            const targetElement = document.elementFromPoint(touch.clientX, touch.clientY);
+                            const newDragTargetEl = targetElement ? targetElement.closest('.calendar-day:not(.is-not-current-month)') : null;
+                            if (dragTargetEl && dragTargetEl !== newDragTargetEl) {
+                                dragTargetEl.classList.remove('drag-over');
+                            }
+                            if (newDragTargetEl) {
+                                newDragTargetEl.classList.add('drag-over');
+                                dragTargetEl = newDragTargetEl;
+                            } else {
+                                dragTargetEl = null;
+                            }
+                        }
+                    });
+
+                    dayEl.addEventListener('touchend', (e) => {
+                        clearTimeout(longPressTimer);
+                        if (draggedEventData) {
+                            dragGhost.style.display = 'none';
+                            e.target.classList.remove('is-dragging');
+                            const touch = e.changedTouches[0];
+                            const targetElement = document.elementFromPoint(touch.clientX, touch.clientY);
+                            const dropTargetEl = targetElement ? targetElement.closest('.calendar-day:not(.is-not-current-month)') : null;
+
+                            if (dropTargetEl) {
+                                const newDate = dropTargetEl.dataset.date;
+                                if (newDate && newDate !== draggedEventData.date) {
+                                    const eventIndex = events.findIndex(e => e.date === draggedEventData.date);
+                                    if (eventIndex !== -1) {
+                                        const existingEventAtNewDate = events.find(e => e.date === newDate);
+                                        if (!existingEventAtNewDate) {
+                                            events[eventIndex].date = newDate;
+                                            updateEventList();
+                                            renderCalendar();
+                                        }
+                                    }
+                                }
+                                dropTargetEl.classList.remove('drag-over');
+                            }
+                            draggedEventData = null;
+                            dragTargetEl = null;
+                        }
+                    });
+
                     calendarEl.appendChild(dayEl);
                 }
 
-                // Leere Felder für den nächsten Monat
                 const totalCells = firstDayIndex + daysInMonth;
                 const remainingCells = 42 - totalCells; 
                 for (let i = 1; i <= remainingCells; i++) {
@@ -284,7 +635,6 @@
                 }
             }
 
-            // Funktion zum Aktualisieren der Event-Liste
             function updateEventList() {
                 eventListEl.innerHTML = '';
                 totalEventsEl.textContent = events.length;
@@ -297,15 +647,16 @@
                     
                     const textContainer = document.createElement('div');
                     textContainer.className = 'flex items-center';
-                    // Änderung: Monat wird jetzt ausgeschrieben
                     const formattedDate = new Date(event.date).toLocaleDateString('de-DE', { day: '2-digit', month: 'long' });
                     
-                    // Bestimmen der CSS-Klasse basierend auf dem Event-Typ
                     const shiftClass = event.type === 'predefined' ? 'text-emerald-700' : 'text-purple-700';
 
-                    // Änderung: Doppelpunkt durch Bindestrich mit Leerzeichen ersetzt
                     textContainer.innerHTML = `<span class="text-gray-700 font-medium">${formattedDate} - </span><span class="${shiftClass} font-bold">${event.shift}</span>`;
 
+                    const buttonContainer = document.createElement('div');
+                    buttonContainer.className = 'flex gap-2 items-center';
+                    
+                    // Die individuellen Buttons zur Sprachausgabe wurden entfernt
                     const deleteBtn = document.createElement('button');
                     deleteBtn.innerHTML = '&times;';
                     deleteBtn.className = 'bg-red-500 hover:bg-red-600 text-white font-bold h-6 w-6 rounded-full flex items-center justify-center transition-colors';
@@ -315,13 +666,14 @@
                         renderCalendar();
                     });
 
+                    buttonContainer.appendChild(deleteBtn);
+                    
                     li.appendChild(textContainer);
-                    li.appendChild(deleteBtn);
+                    li.appendChild(buttonContainer);
                     eventListEl.appendChild(li);
                 });
             }
 
-            // Funktion zum Hinzufügen eines neuen Termins
             function addEvent(shift) {
                 if (selectedDate) {
                     const eventType = predefinedShifts.includes(shift) ? 'predefined' : 'freeText';
@@ -338,7 +690,6 @@
                 }
             }
 
-            // Event-Listener für die Schicht-Buttons im Modal
             dayShiftButtonsEl.addEventListener('click', (e) => {
                 if (e.target.classList.contains('shift-btn')) {
                     addEvent(e.target.dataset.shift);
@@ -350,11 +701,9 @@
                 }
             });
 
-            // Event-Listener für den Freitext-Speichern-Button
             saveFreeTextBtn.addEventListener('click', () => {
-                const freeTextValue = freeTextEl.value.trim();
-                // Überprüfen, ob das Easter Egg ausgelöst werden soll
-                if (freeTextValue === "Sillian Lotse") {
+                const freeTextValue = freeTextEl.value.trim().toUpperCase(); 
+                if (freeTextValue === "SILLIAN LOTSE") {
                     closeModal();
                     easterEggModal.showModal();
                 } else if (freeTextValue) {
@@ -362,12 +711,9 @@
                 }
             });
 
-            // Event-Listener zum Schließen des Haupt-Modals
             closeModalBtn.addEventListener('click', closeModal);
-            // Event-Listener zum Schließen des Easter Egg Modals
             closeEasterEggModalBtn.addEventListener('click', closeEasterEggModal);
 
-            // Event-Listener für Monat-Navigation
             prevMonthBtn.addEventListener('click', () => {
                 currentDate.setMonth(currentDate.getMonth() - 1);
                 renderCalendar();
@@ -377,14 +723,17 @@
                 renderCalendar();
             });
 
-            // Funktion zum Generieren und Herunterladen der .ics-Datei
+            // Event-Listener für den neuen Kontroll-Button
+            controlButton.addEventListener('click', () => {
+                readAllEvents(controlButton);
+            });
+
             downloadIcsBtn.addEventListener('click', () => {
                 if (events.length === 0) {
                     showMessage('Es sind keine Termine zum Herunterladen vorhanden.');
                     return;
                 }
                 
-                // Monatsnamen des ersten Termins für den Dateinamen abrufen
                 const firstEventDate = new Date(events[0].date);
                 const monthName = firstEventDate.toLocaleString('de-DE', { month: 'long' });
                 const filename = `dienstplan-${monthName.toLowerCase()}.ics`;
@@ -416,7 +765,6 @@
                 document.body.removeChild(a);
             });
 
-            // Initialisierung
             renderCalendar();
             updateEventList();
         });
